@@ -4,8 +4,8 @@
 - Indices, FX, commodities: Yahoo Finance daily closes (yfinance). Changes vs the last close
   on or before the same calendar date 1, 6 and 12 months earlier; YTD vs last close of prior year.
 - US Treasury par yield curve (home.treasury.gov CSV): latest + 1M/3M/6M/1Y-ago curves.
-- US inflation (FRED CSV): CPI and core CPI (NSA, the basis of BLS y/y), PCE and core PCE (SA, BEA basis),
-  13 months of y/y plus latest m/m (CPI m/m from SA series).
+- US inflation: CPI and core CPI from the BLS public API (NSA for y/y, SA for m/m, as BLS reports them);
+  PCE and core PCE from FRED (SA, BEA basis). 13 months of y/y plus latest m/m.
 - UK 5Y and 10Y par yields (Bank of England IADB): latest + 1M/3M/6M/1Y ago.
 Each block is independent: a failure is recorded in "errors" and the rest still builds.
 """
@@ -138,12 +138,62 @@ def get_retry(url, tries=4, timeout=120):
 
 
 def fred_series(sid):
-    r = get_retry(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}")
+    r = get_retry(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}", tries=2, timeout=45)
     df = pd.read_csv(io.StringIO(r.text))
     dcol = df.columns[0]
     s = pd.to_numeric(df[sid], errors="coerce")
     s.index = pd.to_datetime(df[dcol])
     return s
+
+
+def bls_series(sid):
+    """BLS public API v1 (no key): monthly index levels for the last ~3 years."""
+    r = get_retry(f"https://api.bls.gov/publicAPI/v1/timeseries/data/{sid}", tries=3, timeout=60)
+    js = r.json()
+    if js.get("status") != "REQUEST_SUCCEEDED":
+        raise ValueError(f"BLS {sid}: {js.get('status')} {js.get('message')}")
+    vals = {}
+    for row in js["Results"]["series"][0]["data"]:
+        if not row["period"].startswith("M") or row["period"] == "M13":
+            continue
+        try:
+            v = float(row["value"])
+        except ValueError:
+            continue  # "-" for months BLS did not publish
+        vals[pd.Timestamp(int(row["year"]), int(row["period"][1:]), 1)] = v
+    s = pd.Series(vals).sort_index()
+    full = pd.date_range(s.index.min(), s.index.max(), freq="MS")
+    return s.reindex(full)
+
+
+def infl_from(s, sm, labels):
+    valid = s.dropna()
+    last = valid.index[-1]
+    months = [last - pd.DateOffset(months=i) for i in range(12, -1, -1)]
+    pts = []
+    for m in months:
+        a, b = s.get(m), s.get(m - pd.DateOffset(months=12))
+        y = round((a / b - 1) * 100, 2) if (a is not None and b is not None and pd.notna(a) and pd.notna(b)) else None
+        pts.append({"m": m.strftime("%Y-%m"), "y": y})
+    a, b = sm.get(last), sm.get(last - pd.DateOffset(months=1))
+    mom = round((a / b - 1) * 100, 2) if (a is not None and b is not None and pd.notna(a) and pd.notna(b)) else None
+    return dict(labels, latest=last.strftime("%Y-%m"), pts=pts, mom=mom)
+
+
+def cpi_block():
+    out = {}
+    for key, nsa, sa in (("CPI", "CUUR0000SA0", "CUSR0000SA0"), ("Core CPI", "CUUR0000SA0L1E", "CUSR0000SA0L1E")):
+        out[key] = infl_from(bls_series(nsa), bls_series(sa),
+                             {"source": "BLS", "yoySeries": nsa, "momSeries": sa})
+    return out
+
+
+def pce_block():
+    out = {}
+    for key, sid in (("PCE", "PCEPI"), ("Core PCE", "PCEPILFE")):
+        s = fred_series(sid)
+        out[key] = infl_from(s, s, {"source": "FRED", "yoySeries": sid, "momSeries": sid})
+    return out
 
 
 def fred_block():
@@ -200,8 +250,9 @@ def main():
     blocks = [("indices", lambda: quote_block(INDICES, {n: 2 for n, _ in INDICES})),
               ("fx", lambda: quote_block(FX, {"USD/MXN": 4, "EUR/USD": 5, "GBP/USD": 5, "DXY (context)": 3})),
               ("cmd", lambda: quote_block(CMD, {"Copper": 3})),
-              ("ust", treasury), ("usInflation", fred_block),
-              ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None))]
+              ("ust", treasury),
+              ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None)),
+              ("usCPI", cpi_block), ("usPCE", pce_block)]
     for key, fn in blocks:
         try:
             out[key] = fn()
@@ -209,6 +260,8 @@ def main():
         except Exception as e:
             log(key, "failed:", repr(e))
             out["errors"].append(f"{key}: {repr(e)[:200]}")
+    if "usCPI" in out or "usPCE" in out:  # one combined block for the brief
+        out["usInflation"] = dict(out.get("usCPI", {}), **out.get("usPCE", {}))
     with open(os.path.join(DATA, "markets.json"), "w") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     if len(out["errors"]) == len(blocks):
