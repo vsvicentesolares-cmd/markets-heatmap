@@ -14,6 +14,7 @@ import io
 import json
 import os
 import sys
+import time
 
 import pandas as pd
 import requests
@@ -27,7 +28,7 @@ INDICES = [("S&P 500", "^GSPC"), ("Nasdaq 100", "^NDX"), ("Dow Jones", "^DJI"), 
            ("FTSE 100", "^FTSE"), ("S&P/BMV IPC", "^MXX"), ("Euro Stoxx 50", "^STOXX50E"), ("Nikkei 225", "^N225")]
 FX = [("USD/MXN", "MXN=X"), ("EUR/USD", "EURUSD=X"), ("GBP/USD", "GBPUSD=X"), ("DXY (context)", "DX-Y.NYB")]
 CMD = [("Brent", "BZ=F", "USD/bbl, front-month future"), ("WTI", "CL=F", "USD/bbl, front-month future"),
-       ("TTF gas", "TTF=F", "EUR/MWh, front-month future"), ("Gold", "GC=F", "USD/oz, front-month future"),
+("Gold", "GC=F", "USD/oz, front-month future"),
        ("Copper", "HG=F", "USD/lb, front-month future")]
 UST_COLS = [("3M", "3 Mo"), ("6M", "6 Mo"), ("1Y", "1 Yr"), ("2Y", "2 Yr"), ("5Y", "5 Yr"), ("10Y", "10 Yr"), ("30Y", "30 Yr")]
 HORIZONS = [("1M", 1), ("3M", 3), ("6M", 6), ("1Y", 12)]
@@ -72,6 +73,7 @@ def quote_block(rows, dec_map=None):
             rec["unit"] = r[2]
         s = close[sym].dropna() if sym in close.columns else pd.Series(dtype=float)
         s.index = pd.to_datetime(s.index).tz_localize(None) if getattr(s.index, "tz", None) else pd.to_datetime(s.index)
+        s = s[s.index.dayofweek < 5]  # Yahoo sometimes adds a Sunday bar for FX
         if len(s) < 2:
             rec["error"] = "no data"
             out.append(rec)
@@ -97,8 +99,7 @@ def treasury():
     for y in (today.year - 1, today.year):
         url = ("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/"
                f"{y}/all?type=daily_treasury_yield_curve&field_tdr_date_value={y}&page&_format=csv")
-        r = requests.get(url, headers=UA, timeout=60)
-        r.raise_for_status()
+        r = get_retry(url)
         frames.append(pd.read_csv(io.StringIO(r.text)))
     df = pd.concat(frames)
     df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%Y")
@@ -122,9 +123,22 @@ def treasury():
             "src": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView?type=daily_treasury_yield_curve"}
 
 
+def get_retry(url, tries=4, timeout=120):
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.get(url, headers=UA, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last = e
+            log("retry", i + 1, url[:80], repr(e)[:120])
+            time.sleep(10 * (i + 1))
+    raise last
+
+
 def fred_series(sid):
-    r = requests.get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}", headers=UA, timeout=60)
-    r.raise_for_status()
+    r = get_retry(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}")
     df = pd.read_csv(io.StringIO(r.text))
     dcol = df.columns[0]
     s = pd.to_numeric(df[sid], errors="coerce")
@@ -153,14 +167,13 @@ def fred_block():
     return out
 
 
-def boe_block():
+def boe_block(anchor=None):
     end = dt.date.today()
     start = end - dt.timedelta(days=400)
     f = lambda d: d.strftime("%d/%b/%Y")
     url = ("https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes"
            f"&Datefrom={f(start)}&Dateto={f(end)}&SeriesCodes=IUDSNPY,IUDMNPY&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N")
-    r = requests.get(url, headers=UA, timeout=60)
-    r.raise_for_status()
+    r = get_retry(url)
     df = pd.read_csv(io.StringIO(r.text))
     df["DATE"] = pd.to_datetime(df["DATE"], format="%d %b %Y")
     df = df.set_index("DATE").sort_index()
@@ -174,7 +187,8 @@ def boe_block():
         return {"d": sub.index[-1].date().isoformat(), "5Y": round(float(row["IUDSNPY"]), 2),
                 "10Y": round(float(row["IUDMNPY"]), 2)}
 
-    return {"latest": at(last_d), "hist": {k: at(months_back(last_d, n)) for k, n in HORIZONS},
+    base = anchor or last_d
+    return {"latest": at(last_d), "hist": {k: at(months_back(base, n)) for k, n in HORIZONS},
             "src": "Bank of England IADB, IUDSNPY (5Y) and IUDMNPY (10Y) nominal par yields"}
 
 
@@ -186,7 +200,8 @@ def main():
     blocks = [("indices", lambda: quote_block(INDICES, {n: 2 for n, _ in INDICES})),
               ("fx", lambda: quote_block(FX, {"USD/MXN": 4, "EUR/USD": 5, "GBP/USD": 5, "DXY (context)": 3})),
               ("cmd", lambda: quote_block(CMD, {"Copper": 3})),
-              ("ust", treasury), ("usInflation", fred_block), ("ukBoE", boe_block)]
+              ("ust", treasury), ("usInflation", fred_block),
+              ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None))]
     for key, fn in blocks:
         try:
             out[key] = fn()
