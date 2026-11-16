@@ -226,7 +226,7 @@ def pe():
 
 @safe('ameco')
 def amc():
-    for var, key in (('AVGDGP', 'AMECO_GAP'), ('ZNAWRU', 'AMECO_NAWRU'), ('OVGD', 'AMECO_OVGD')):
+    for var, key in (('AVGDGP', 'AMECO_GAP'), ('ZNAWRU', 'AMECO_NAWRU')):   # OVGD (only a units ratio) stays as frozen
         try: t = ameco(var, ['ESP', 'GBR', 'EA20'])
         except Exception as e: log(f'AMECO {var}: {e!r}'[:200]); continue
         for name, mod in (('Spain', 'es_inputs'), ('United Kingdom', 'uk_inputs'), ('Euro area', 'ez_inputs')):

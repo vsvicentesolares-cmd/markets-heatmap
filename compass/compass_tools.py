@@ -217,7 +217,9 @@ def todo(store, end):
             q = shift(end, -((int(end[5:]) - 1) % 3))           # quarter containing END
             want = [shift(q, -3)]                               # last completed quarter by a mid-quarter run
         miss = [p for p in want if p not in have]
-        if miss: out.append(f'{key:22s} missing {", ".join(miss):26s} {hint}')
+        last = max(have) if have else None
+        lastv = f' [latest {last} = {store.get(key, last)}]' if freq == 'q' and last else ''
+        if miss: out.append(f'{key:22s} missing {", ".join(miss):26s} {hint}{lastv}')
     return out
 
 
