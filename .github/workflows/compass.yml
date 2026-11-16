@@ -1,0 +1,41 @@
+name: compass-feed
+
+on:
+  schedule:
+    - cron: "41 4 3,18 * *"   # 04:41 UTC on the 3rd and 18th; the compass scheduled task runs later the same morning
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: heatmap            # same group as the daily heatmap job, so the two never push at once
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install --quiet requests pandas lxml yfinance numpy
+      - name: Fetch compass feed
+        run: python compass/fetch_compass.py
+      - name: Dry run (feed applied to the frozen inputs, no manual entries)
+        continue-on-error: true
+        run: |
+          cd compass
+          python compass_tools.py prep
+          python compass_tools.py build --out /tmp/compass_out
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add compass/feed.json
+          git diff --cached --quiet || git commit -m "compass feed $(date -u +%F)"
+          git pull --rebase --quiet
+          git push

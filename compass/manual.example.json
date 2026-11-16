@@ -1,0 +1,16 @@
+{
+ "series": {
+  "mx_inputs.GDPQ": {
+   "2026-07": 6551233.3
+  },
+  "uk_inputs.GDPQ": {
+   "2026-07": 717532.8
+  }
+ },
+ "src": {
+  "mx_inputs.GDPQ": "2026-07: Q2 x 1.009 (INEGI flash +0.9% q/q)",
+  "uk_inputs.GDPQ": "2026-07: Q2 x 1.007 (ONS first estimate +0.7% q/q)"
+ },
+ "override": [],
+ "last_phases": {}
+}
