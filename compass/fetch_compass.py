@@ -3,7 +3,8 @@
 Each series is {key, mode, data: {period: value}, source, last}; compass_tools.py applies them over the frozen
 inputs in raw/. A source that fails is logged in "log" and skipped: the previous values stay in place.
 Modes: replace (official series, revisions welcome), fill (market series: only new periods, history kept),
-chain (extend a level series past its last period with this source's growth rates).
+chain (extend a level series past its last period with this source's growth rates),
+splice (extend a rate series past its last period with this source's changes).
 """
 import datetime as dt, io, json, math, os, re, sys, time
 import requests
@@ -133,7 +134,7 @@ def ameco(var, codes):
     df = pd.read_html(io.StringIO(html))[0]
     out = {}
     for _, r in df.iterrows():
-        name = str(r.iloc[0])
+        name = ' '.join(str(x) for x in r.iloc[:3])
         out[name] = {str(c): float(r[c]) for c in df.columns if re.fullmatch(r'\d{4}', str(c)) and pd.notna(pd.to_numeric(r[c], errors='coerce'))}
     return out
 
@@ -162,7 +163,7 @@ def us_market():
 @safe('es')
 def es():
     add('es_inputs.URATE', fred('LRHUTTTTESM156S', '2019-01-01'), 'FRED LRHUTTTTESM156S')
-    add('es_inputs.URATE', eurostat('une_rt_m', [('geo', 'ES'), ('s_adj', 'SA'), ('age', 'TOTAL'), ('sex', 'T'), ('unit', 'PC_ACT'), ('sinceTimePeriod', '2019-01')]), 'Eurostat une_rt_m ES', 'fill')
+    add('es_inputs.URATE', eurostat('une_rt_m', [('geo', 'ES'), ('s_adj', 'SA'), ('age', 'TOTAL'), ('sex', 'T'), ('unit', 'PC_ACT'), ('sinceTimePeriod', '2019-01')]), 'Eurostat une_rt_m ES (changes)', 'splice')
     add('es_inputs.Y10', fred('IRLTLT01ESM156N', '2019-01-01'), 'FRED IRLTLT01ESM156N', nd=3)
     add('es_inputs.DEPO', fred('ECBDFR', '2019-01-01', avg=True), 'FRED ECBDFR monthly average', nd=2)
     add('es_inputs.EUR3M', ecb('FM/M.U2.EUR.RT.MM.EURIBOR3MD_.HSTA'), 'ECB 3M Euribor monthly average', nd=3)
@@ -184,7 +185,7 @@ def mx():
 @safe('uk')
 def uk():
     add('uk_inputs.URATE', fred('LRHUTTTTGBM156S', '2019-01-01'), 'FRED LRHUTTTTGBM156S', nd=2)
-    try: add('uk_inputs.URATE', ons('employmentandlabourmarket/peoplenotinwork/unemployment/timeseries/mgsx/lms', 'months'), 'ONS MGSX', 'fill', 1)
+    try: add('uk_inputs.URATE', ons('employmentandlabourmarket/peoplenotinwork/unemployment/timeseries/mgsx/lms', 'months'), 'ONS MGSX (changes)', 'splice', 1)
     except Exception as e: log(f'ONS MGSX: {e!r}'[:200])
     add('uk_inputs.Y10', fred('IRLTLT01GBM156N', '2019-01-01'), 'FRED IRLTLT01GBM156N')
     add('uk_inputs.GDPQ', fred('NGDPRSAXDCGBQ', '2018-01-01'), 'FRED NGDPRSAXDCGBQ', nd=1)
@@ -230,7 +231,7 @@ def amc():
         except Exception as e: log(f'AMECO {var}: {e!r}'[:200]); continue
         for name, mod in (('Spain', 'es_inputs'), ('United Kingdom', 'uk_inputs'), ('Euro area', 'ez_inputs')):
             if mod == 'ez_inputs' and var == 'OVGD': continue
-            row = next((v for n, v in t.items() if n.startswith(name)), None)
+            row = next((v for n, v in t.items() if name in n), None)
             if row: add(f'{mod}.{key}', row, f'AMECO {var}', nd=5)
             else: log(f'AMECO {var}: no row for {name}')
 

@@ -8,6 +8,7 @@ Layers, applied in this order:
   2. feed.json       written by the GitHub workflow (fetch_compass.py): API series, each with a mode
                      replace = overwrite those periods, fill = only periods still empty,
                      chain = extend past the last period using the feed series' growth rates
+                     splice = extend past the last period adding the feed series' changes (rates, e.g. unemployment)
   3. manual.json     {"series": {key: {period: value}}, "src": {key: text}, "override": [keys]}
                      kept in the artifact's database (inputs/manual); fills gaps only, unless the key is in "override"
                      (CDS keys always overwrite, so a month-to-date close can be replaced by the month-end close)
@@ -144,6 +145,16 @@ class Store:
                 base = base * data[p] / data[last]; last = p
                 if self.get(key, p) is None or p > have[-1]:
                     self.set(key, p, round(base, 1)); n += 1
+            return n
+        if mode == 'splice':
+            # add the source's changes onto the last period we already have (avoids level breaks between sources)
+            have = self.periods(key)
+            if not have or have[-1] not in data:
+                self.log.append(f'splice {key}: no overlap at {have[-1] if have else None}, skipped'); return 0
+            last = have[-1]; base = self.get(key, last)
+            for p in sorted(data):
+                if p > last and data[p] is not None:
+                    self.set(key, p, round(base + data[p] - data[last], 2)); n += 1
             return n
         for p, v in data.items():
             if v is None: continue
