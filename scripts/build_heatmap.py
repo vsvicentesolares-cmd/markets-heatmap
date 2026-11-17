@@ -20,6 +20,7 @@ from io import StringIO
 import pandas as pd
 import requests
 import yfinance as yf
+from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
@@ -280,10 +281,27 @@ def closes_for(symbols):
     return c
 
 
+# Exchange time zone and local close (plus a 20 min buffer) per heatmap index: today's bar is used only
+# after the session has closed, so a run during trading hours shows the last complete session.
+SESSION = {"SPX": ("America/New_York", 16, 20), "IBEX": ("Europe/Madrid", 17, 55),
+           "UKX": ("Europe/London", 16, 55), "MEXBOL": ("America/Mexico_City", 15, 20)}
+
+
+def complete_sessions(s, ix_id, now=None):
+    tz, hh, mm = SESSION.get(ix_id, ("America/New_York", 16, 20))
+    now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(ZoneInfo(tz))
+    today = now.date()
+    closed = (now.hour, now.minute) >= (hh, mm)
+    idx = pd.to_datetime(s.index)
+    keep = [(d.date() < today) or (d.date() == today and closed) for d in idx]
+    return s[keep]
+
+
 def compute(ix, members, closes):
     rows, last_dates = [], []
     for m in members:
         s = closes[m["y"]].dropna() if m["y"] in closes.columns else pd.Series(dtype=float)
+        s = complete_sessions(s, ix["id"]) if len(s) else s
         if len(s) == 0:
             rows.append((m, None, None, None))
             continue
