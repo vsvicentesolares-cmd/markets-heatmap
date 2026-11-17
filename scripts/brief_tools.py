@@ -134,8 +134,8 @@ def build_heat(ed, heat, date):
         gen = dt.datetime.strptime(heat["generatedAt"], "%Y-%m-%dT%H:%MZ")
     except Exception:
         return None, "heat file has no valid generatedAt"
-    if (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - gen).total_seconds() > 36 * 3600:
-        return None, f"heat file is stale (built {heat['generatedAt']})"
+    if gen.date() != dt.datetime.now(dt.timezone.utc).date():
+        return None, f"heat file is stale (built {heat['generatedAt']}, not today UTC)"
     idx = {r["n"]: r.get("d1") for r in ed.get("indices", [])}
     check = [{"id": b["id"], "wd1": b.get("wd1"), "idx": idx.get(NAMES.get(b["id"], ""))} for b in heat.get("indices", [])]
     doc = {"date": date, "asOf": heat.get("asOf"), "generatedAt": heat["generatedAt"],
@@ -157,8 +157,9 @@ def prep(a):
         try:
             mk = load(a.markets)
             gen = dt.datetime.strptime(mk["generatedAt"], "%Y-%m-%dT%H:%MZ")
-            if (dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - gen).total_seconds() > 36 * 3600:
-                log.append(f"MARKETS FILE STALE (built {mk['generatedAt']}): use the fallback sources")
+            if gen.date() != dt.datetime.now(dt.timezone.utc).date():
+                log.append(f"MARKETS FILE STALE (built {mk['generatedAt']}, not today UTC): the scheduled run "
+                           "has not happened yet; run the heatmap-data workflow manually or use the fallback sources")
                 mk = {}
             if mk.get("errors"):
                 log.append("markets.json errors: " + "; ".join(mk["errors"]))
