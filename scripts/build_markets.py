@@ -19,6 +19,7 @@ import time
 import pandas as pd
 import requests
 import yfinance as yf
+from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
@@ -56,6 +57,25 @@ def on_or_before(series, d):
     return s.index[-1].date(), float(s.iloc[-1])
 
 
+# Exchange time zone and local close (plus a 20 min buffer) per Yahoo symbol. A bar dated today is only
+# kept once that session has closed; bars dated after today's local date (Yahoo labels overnight FX and
+# futures sessions with the next date) are always dropped. This keeps intraday snapshots out of "closes".
+SESSION = {"^GSPC": ("America/New_York", 16, 20), "^NDX": ("America/New_York", 16, 20),
+           "^DJI": ("America/New_York", 16, 20), "^MXX": ("America/Mexico_City", 15, 20),
+           "^IBEX": ("Europe/Madrid", 17, 55), "^FTSE": ("Europe/London", 16, 55),
+           "^STOXX50E": ("Europe/Berlin", 17, 50), "^N225": ("Asia/Tokyo", 15, 50)}
+DEFAULT_SESSION = ("America/New_York", 17, 20)  # FX day and CME/ICE futures settle by ~17:00 New York
+
+
+def complete_sessions(s, sym, now=None):
+    tz, hh, mm = SESSION.get(sym, DEFAULT_SESSION)
+    now = (now or dt.datetime.now(dt.timezone.utc)).astimezone(ZoneInfo(tz))
+    today = now.date()
+    closed = (now.hour, now.minute) >= (hh, mm)
+    keep = [(d.date() < today) or (d.date() == today and closed) for d in s.index]
+    return s[keep]
+
+
 def pct(a, b):
     return round((a / b - 1) * 100, 2) if (a is not None and b) else None
 
@@ -74,6 +94,7 @@ def quote_block(rows, dec_map=None):
         s = close[sym].dropna() if sym in close.columns else pd.Series(dtype=float)
         s.index = pd.to_datetime(s.index).tz_localize(None) if getattr(s.index, "tz", None) else pd.to_datetime(s.index)
         s = s[s.index.dayofweek < 5]  # Yahoo sometimes adds a Sunday bar for FX
+        s = complete_sessions(s, sym)
         if len(s) < 2:
             rec["error"] = "no data"
             out.append(rec)
