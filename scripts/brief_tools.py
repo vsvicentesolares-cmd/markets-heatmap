@@ -94,6 +94,32 @@ def apply_us_curve(ed, mk, log):
     return D
 
 
+def apply_ez(ed, mk, log):
+    """Euro area box from the ECB feed: inflation chart (HICP, core) and ECB rate check. Rows stay manual."""
+    f = mk.get("ezECB")
+    ez = next((c for c in ed.get("macro", []) if c.get("c") == "EZ"), None)
+    if not ez:
+        return
+    if not f or not f.get("HICP"):
+        log.append("EZ ECB FEED MISSING (check the GitHub run): keep EZ inflation chart, update rows by hand on release days")
+        return
+    months = [p["m"] for p in f["HICP"]["pts"]][-13:]
+    old = {s["n"]: {p["m"]: p["y"] for p in s["pts"]} for s in ez["infl"]["series"]}
+    changed = []
+    for s in ez["infl"]["series"]:
+        fv = {p["m"]: p["y"] for p in (f.get(s["n"]) or {}).get("pts", [])}
+        new = [{"m": m, "y": fv.get(m, old[s["n"]].get(m))} for m in months]
+        changed += [f"{s['n']} {p['m']}: {old[s['n']].get(p['m'])} -> {p['y']}" for p in new if old[s["n"]].get(p["m"]) != p["y"]]
+        s["pts"] = new
+    ez["infl"]["asOf"] = f"{mlabel(months[0])} to {mlabel(months[-1])}"
+    if changed:
+        log.append("EZ INFLATION CHART UPDATED: " + "; ".join(changed[:8]))
+    rows = {r["k"]: r for r in ez.get("rows", [])}
+    log.append("EZ feed (latest month, y/y): " + json.dumps({k: (f[k]["latest"], f[k]["pts"][-1]["y"]) for k in ("HICP", "Core HICP") if f.get(k)}) +
+               " | rows p: " + json.dumps({k: rows[k].get("p") for k in ("HICP", "Core HICP") if k in rows}) +
+               " | ECB rates: " + json.dumps(f.get("rates")) + " | box: " + str((ez.get("cb") or {}).get("rate")))
+
+
 def apply_us_infl(ed, mk, log):
     inf = mk.get("usInflation") or {}
     us = next((c for c in ed.get("macro", []) if c.get("c") == "US"), None)
@@ -184,7 +210,7 @@ def prep(a):
         except Exception as e:
             log.append(f"MARKETS FILE UNREADABLE ({e}): use the fallback sources")
             mk = {}
-    if mk.get("mxCetes"):  # Banxico SIE feed: use instead of searching for the Cetes auction
+    if mk and mk.get("mxCetes"):  # Banxico SIE feed: use instead of searching for the Cetes auction
         mc = mk["mxCetes"]
         log.append("MX Cetes (Banxico SIE) latest: " + json.dumps(mc.get("latest")) +
                    " | look-backs: " + json.dumps(mc.get("hist")) + " | series: " + json.dumps(mc.get("titles")))
@@ -192,6 +218,7 @@ def prep(a):
     Dc = apply_us_curve(ed, mk, log) if mk else None
     if mk:
         apply_us_infl(ed, mk, log)
+        apply_ez(ed, mk, log)
     D = D or Dc
     before = len(ed.get("calendar", []))
     ed["calendar"] = sorted([c for c in ed.get("calendar", []) if c.get("d", "") >= a.date], key=lambda c: c["d"])
@@ -212,7 +239,8 @@ def prep(a):
     out += ["LOG:"] + ["- " + x for x in log] + [""]
     out.append("MARKETS: " + "; ".join(f"{r['n']} {r['lvl']} ({r['d1']}%)" for r in ed["indices"] + ed["fx"] + ed["cmd"]))
     for c in ed["macro"]:
-        out.append(f"MACRO {c['c']}: cb {c['cb']['rate']} next {c['cb']['next']} | " +
+        cb = c.get("cb") or {}
+        out.append(f"MACRO {c['c']}: cb {cb.get('rate')} next {cb.get('next')} | " +
                    "; ".join(f"{r['k']}={r['v']} [{r.get('p', '')}]" for r in c["rows"]) +
                    f" | curve {c.get('curveAsOf')} | infl {c['infl']['asOf'] if c.get('infl') else '-'}")
     out.append("CALENDAR: " + "; ".join(f"{c['d']} {c['r']} {c['e']}" for c in ed["calendar"]))
@@ -324,7 +352,7 @@ def merge(a):
         mon = MON.index(m.group(2)) + 1
         yr = int(date[:4]) - (1 if mon > int(date[5:7]) else 0)
         D = f"{yr}-{mon:02d}-{int(m.group(1)):02d}"
-    curves = {"date": D, "src": "US: Treasury par curve; ES, UK: Trading Economics; MX: Banxico Cetes auctions and TE 10Y"}
+    curves = {"date": D, "src": "US: Treasury par curve; EZ (Bund), ES, UK: Trading Economics; MX: Banxico Cetes auctions and TE 10Y"}
     for c in ed["macro"]:
         curves[c["c"]] = c.get("curve", [])
     dump(ed, f"{a.out}/edition.json", pretty=True)
