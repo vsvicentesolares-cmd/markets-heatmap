@@ -265,7 +265,8 @@ def boe_block(anchor=None):
 
 # ECB Data Portal (no key): euro area HICP and core HICP y/y (ex energy, food, alcohol, tobacco) and policy rates.
 ECB_URL = "https://data-api.ecb.europa.eu/service/data/{flow}/{key}"
-ECB_HICP = [("HICP", "M.U2.N.000000.4.ANR"), ("Core HICP", "M.U2.N.XEF000.4.ANR")]
+# The old ICP dataflow stopped at Dec 2025 (ECB replaced it with the HICP dataflow on 4 Feb 2026).
+ECB_HICP = [("HICP", "M.U2.N.000000.4D0.ANR"), ("Core HICP", "M.U2.N.XEF000.4D0.ANR")]
 ECB_RATES = [("DFR", "D.U2.EUR.4F.KR.DFR.LEV"), ("MRO", "D.U2.EUR.4F.KR.MRR_FR.LEV")]
 
 
@@ -291,14 +292,16 @@ def ecb_csv(flow, key, params):
 
 
 def ecb_block():
-    out = {"src": "ECB Data Portal: ICP " + ", ".join(k for _, k in ECB_HICP) + "; FM " + ", ".join(k for _, k in ECB_RATES)}
+    out = {"src": "ECB Data Portal: HICP " + ", ".join(k for _, k in ECB_HICP) + "; FM " + ", ".join(k for _, k in ECB_RATES)}
     start = (dt.date.today().replace(day=1) - dt.timedelta(days=500)).strftime("%Y-%m")
     for name, key in ECB_HICP:
-        df = ecb_csv("ICP", key, {"startPeriod": start})
-        df = df[df["KEY"] == "ICP." + key].dropna(subset=["OBS_VALUE"]).sort_values("TIME_PERIOD")
+        df = ecb_csv("HICP", key, {"startPeriod": start})
+        df = df[df["KEY"] == "HICP." + key].dropna(subset=["OBS_VALUE"]).sort_values("TIME_PERIOD")
         pts = [{"m": str(m)[:7], "y": round(float(v), 2)} for m, v in zip(df["TIME_PERIOD"], df["OBS_VALUE"])]
         if not pts:
             raise RuntimeError(f"ECB {name}: no data")
+        if pts[-1]["m"] < (dt.date.today() - dt.timedelta(days=75)).strftime("%Y-%m"):
+            raise RuntimeError(f"ECB {name}: latest month {pts[-1]['m']} looks stale (series discontinued?)")
         out[name] = {"latest": pts[-1]["m"], "pts": pts[-13:]}
     rates = {}
     for name, key in ECB_RATES:
