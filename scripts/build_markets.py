@@ -263,6 +263,53 @@ def boe_block(anchor=None):
             "src": "Bank of England IADB, IUDSNPY (5Y) and IUDMNPY (10Y) nominal par yields"}
 
 
+# ECB Data Portal (no key): euro area HICP and core HICP y/y (ex energy, food, alcohol, tobacco) and policy rates.
+ECB_URL = "https://data-api.ecb.europa.eu/service/data/{flow}/{key}"
+ECB_HICP = [("HICP", "M.U2.N.000000.4.ANR"), ("Core HICP", "M.U2.N.XEF000.4.ANR")]
+ECB_RATES = [("DFR", "D.U2.EUR.4F.KR.DFR.LEV"), ("MRO", "D.U2.EUR.4F.KR.MRR_FR.LEV")]
+
+
+def ecb_csv(flow, key, params):
+    last = None
+    for i in range(3):
+        try:
+            r = requests.get(ECB_URL.format(flow=flow, key=key), params={"format": "csvdata", **params},
+                             headers={"Accept": "text/csv", **UA}, timeout=60)
+            r.raise_for_status()
+            break
+        except Exception as e:
+            last = e
+            log("retry", i + 1, "ECB", flow, repr(e)[:120])
+            time.sleep(10 * (i + 1))
+    else:
+        raise last
+    df = pd.read_csv(io.StringIO(r.text))
+    need = {"KEY", "TIME_PERIOD", "OBS_VALUE"}
+    if not need <= set(df.columns):
+        raise RuntimeError(f"ECB {flow} CSV columns {list(df.columns)[:12]}")
+    return df
+
+
+def ecb_block():
+    out = {"src": "ECB Data Portal: ICP " + ", ".join(k for _, k in ECB_HICP) + "; FM " + ", ".join(k for _, k in ECB_RATES)}
+    start = (dt.date.today().replace(day=1) - dt.timedelta(days=500)).strftime("%Y-%m")
+    for name, key in ECB_HICP:
+        df = ecb_csv("ICP", key, {"startPeriod": start})
+        df = df[df["KEY"] == "ICP." + key].dropna(subset=["OBS_VALUE"]).sort_values("TIME_PERIOD")
+        pts = [{"m": str(m)[:7], "y": round(float(v), 2)} for m, v in zip(df["TIME_PERIOD"], df["OBS_VALUE"])]
+        if not pts:
+            raise RuntimeError(f"ECB {name}: no data")
+        out[name] = {"latest": pts[-1]["m"], "pts": pts[-13:]}
+    rates = {}
+    for name, key in ECB_RATES:
+        df = ecb_csv("FM", key, {"lastNObservations": 1})
+        df = df.dropna(subset=["OBS_VALUE"]).sort_values("TIME_PERIOD")
+        if len(df):
+            rates[name] = {"d": str(df["TIME_PERIOD"].iloc[-1])[:10], "v": round(float(df["OBS_VALUE"].iloc[-1]), 2)}
+    out["rates"] = rates
+    return out
+
+
 # Banxico SIE: weekly Cetes primary auction yields (series IDs per the SIE catalogue; titles are logged so a
 # wrong ID shows up in the run). Needs a free SIE token in the BANXICO_TOKEN repository secret.
 SIE_CETES = [("28d", "SF43936"), ("91d", "SF43939"), ("182d", "SF43942"), ("1Y", "SF43945")]
@@ -341,7 +388,7 @@ def main():
               ("cmd", lambda: quote_block(CMD, {"Copper": 3})),
               ("ust", treasury),
               ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None)),
-              ("usCPI", cpi_block), ("usPCE", pce_block),
+              ("usCPI", cpi_block), ("usPCE", pce_block), ("ezECB", ecb_block),
               ("mxCetes", lambda: sie_cetes_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None))]
     for key, fn in blocks:
         try:
