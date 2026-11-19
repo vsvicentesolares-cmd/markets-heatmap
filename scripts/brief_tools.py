@@ -104,6 +104,10 @@ def apply_ez(ed, mk, log):
         log.append("EZ ECB FEED MISSING (check the GitHub run): keep EZ inflation chart, update rows by hand on release days")
         return
     months = [p["m"] for p in f["HICP"]["pts"]][-13:]
+    chart_last = ez["infl"]["series"][0]["pts"][-1]["m"]
+    if len(months) < 13 or months[-1] < chart_last:
+        log.append(f"EZ ECB FEED STALE (latest {months[-1]} vs chart {chart_last}): chart left as is; check the GitHub run")
+        return
     old = {s["n"]: {p["m"]: p["y"] for p in s["pts"]} for s in ez["infl"]["series"]}
     changed = []
     for s in ez["infl"]["series"]:
