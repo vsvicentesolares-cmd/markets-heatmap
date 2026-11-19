@@ -263,6 +263,74 @@ def boe_block(anchor=None):
             "src": "Bank of England IADB, IUDSNPY (5Y) and IUDMNPY (10Y) nominal par yields"}
 
 
+# Banxico SIE: weekly Cetes primary auction yields (series IDs per the SIE catalogue; titles are logged so a
+# wrong ID shows up in the run). Needs a free SIE token in the BANXICO_TOKEN repository secret.
+SIE_CETES = [("28d", "SF43936"), ("91d", "SF43939"), ("182d", "SF43942"), ("1Y", "SF43945")]
+SIE_URL = "https://www.banxico.org.mx/SieAPIRest/service/v1/series/{ids}/datos/{start}/{end}"
+
+
+def sie_parse_date(x):
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return dt.datetime.strptime(x, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def sie_series(ids, start, end, token):
+    url = SIE_URL.format(ids=",".join(ids), start=start.isoformat(), end=end.isoformat())
+    last = None
+    for i in range(3):
+        try:
+            r = requests.get(url, headers={"Bmx-Token": token, "Accept": "application/json", **UA}, timeout=60)
+            r.raise_for_status()
+            break
+        except Exception as e:
+            last = e
+            log("retry", i + 1, "Banxico SIE", repr(e)[:120])
+            time.sleep(10 * (i + 1))
+    else:
+        raise last
+    out = {}
+    for ser in r.json().get("bmx", {}).get("series", []):
+        pts = {}
+        for row in ser.get("datos") or []:
+            d = sie_parse_date(str(row.get("fecha", "")))
+            try:
+                v = float(str(row.get("dato", "")).replace(",", ""))
+            except ValueError:  # "N/E" = not available
+                continue
+            if d:
+                pts[pd.Timestamp(d)] = v
+        out[ser.get("idSerie")] = {"title": ser.get("titulo"), "s": pd.Series(pts, dtype=float).sort_index()}
+    return out
+
+
+def sie_cetes_block(anchor=None):
+    token = os.environ.get("BANXICO_TOKEN")
+    if not token:
+        raise RuntimeError("BANXICO_TOKEN secret not set; Cetes stay on the manual auction search")
+    end = dt.date.today()
+    data = sie_series([i for _, i in SIE_CETES], end - dt.timedelta(days=420), end, token)
+    base = anchor or end
+
+    def at(sid, d, max_days):
+        ser = data.get(sid, {}).get("s")
+        if ser is None or ser.empty:
+            return None
+        ad, av = on_or_before(ser, d)
+        if not ad or (d - ad).days > max_days:
+            return None
+        return {"d": ad.isoformat(), "y": round(av, 2)}
+
+    latest = {t: at(sid, end, 21) for t, sid in SIE_CETES}
+    hist = {k: {t: at(sid, months_back(base, n), 7) for t, sid in SIE_CETES} for k, n in HORIZONS}
+    return {"latest": latest, "hist": hist, "titles": {sid: data.get(sid, {}).get("title") for _, sid in SIE_CETES},
+            "src": "Banxico SIE, Cetes primary auction yields " + ", ".join(f"{t} {sid}" for t, sid in SIE_CETES),
+            "note": "Weekly auctions (Tuesdays); 182d and 364d alternate weeks, so each tenor carries its own date"}
+
+
 def main():
     os.makedirs(DATA, exist_ok=True)
     out = {"v": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "errors": [],
@@ -273,7 +341,8 @@ def main():
               ("cmd", lambda: quote_block(CMD, {"Copper": 3})),
               ("ust", treasury),
               ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None)),
-              ("usCPI", cpi_block), ("usPCE", pce_block)]
+              ("usCPI", cpi_block), ("usPCE", pce_block),
+              ("mxCetes", lambda: sie_cetes_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None))]
     for key, fn in blocks:
         try:
             out[key] = fn()
