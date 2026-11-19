@@ -127,7 +127,7 @@ def apply_us_infl(ed, mk, log):
                " | rows p: " + json.dumps({k: rows[k].get("p") for k in ("CPI", "Core CPI", "PCE", "Core PCE") if k in rows}))
 
 
-def build_heat(ed, heat, date):
+def build_heat(ed, heat, date, mk=None):
     if not heat:
         return None, "heat file not provided"
     try:
@@ -144,7 +144,25 @@ def build_heat(ed, heat, date):
            "indices": heat.get("indices", []), "check": check, "errors": heat.get("errors", [])}
     gaps = [f"{c['id']} {c['wd1']} vs {c['idx']}" for c in check
             if c["wd1"] is not None and c["idx"] is not None and abs(c["wd1"] - c["idx"]) > 0.6]
-    return doc, ("heat gaps >0.6pp: " + ", ".join(gaps)) if gaps else "heat ok"
+    # A map dated before its index's last close, or with a big unpriced share, is stale even when the weighted
+    # move happens to sit near the index move (19 Nov 2026: IBEX and FTSE maps showed 17 Nov, gaps under 0.6pp).
+    mkd = {r["n"]: r.get("d") for r in (mk or {}).get("indices", [])}
+    stale = []
+    for b in heat.get("indices", []):
+        want = mkd.get(NAMES.get(b["id"], "")) or b.get("idxAsOf")
+        if want and b.get("asOf", "") < want:
+            stale.append(f"{b['id']} map dated {b.get('asOf')} but index closed {want}")
+        unp = b.get("unpricedW")
+        if unp is None:
+            unp = sum((i.get("w") or 0) for i in b.get("items", []) if i.get("d1") is None)
+        if unp > 10:
+            stale.append(f"{b['id']} {round(unp, 1)}% of weight unpriced")
+    msgs = []
+    if stale:
+        msgs.append("HEAT STALE (tell Vicente; re-run the heatmap-data workflow): " + "; ".join(stale))
+    if gaps:
+        msgs.append("heat gaps >0.6pp: " + ", ".join(gaps))
+    return doc, " | ".join(msgs) if msgs else "heat ok"
 
 
 def prep(a):
@@ -166,6 +184,10 @@ def prep(a):
         except Exception as e:
             log.append(f"MARKETS FILE UNREADABLE ({e}): use the fallback sources")
             mk = {}
+    if mk.get("mxCetes"):  # Banxico SIE feed: use instead of searching for the Cetes auction
+        mc = mk["mxCetes"]
+        log.append("MX Cetes (Banxico SIE) latest: " + json.dumps(mc.get("latest")) +
+                   " | look-backs: " + json.dumps(mc.get("hist")) + " | series: " + json.dumps(mc.get("titles")))
     D = apply_tables(ed, mk, log) if mk else None
     Dc = apply_us_curve(ed, mk, log) if mk else None
     if mk:
@@ -180,7 +202,7 @@ def prep(a):
             heat = load(a.heat)
         except Exception as e:
             log.append(f"heat file unreadable: {e}")
-    hdoc, hmsg = build_heat(ed, heat, a.date)
+    hdoc, hmsg = build_heat(ed, heat, a.date, mk)
     log.append(hmsg)
     dump(ed, f"{a.out}/base.json", pretty=True)
     if hdoc:
