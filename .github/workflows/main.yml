@@ -8,6 +8,7 @@ on:
     - cron: "23 4 * * *"
     - cron: "47 4 * * *"
     - cron: "13 5 * * *"
+    - cron: "31 5 * * *"   # 06:31 Madrid: last heatmap retry before the brief task copies it (~06:40)
   workflow_dispatch: {}
 
 permissions:
@@ -23,29 +24,31 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Skip if today's data is already built
+      # On a scheduled slot after today's markets.json exists, only the heatmap is retried, and only if
+      # latest.json is stale (a map older than its index or >10% of weight unpriced). Manual runs rebuild all.
+      - name: Skip market data if today's is already built
         id: guard
         if: github.event_name == 'schedule'
         run: |
           built=$(python3 -c "import json;print(json.load(open('data/markets.json'))['generatedAt'][:10])" 2>/dev/null || echo none)
-          if [ "$built" = "$(date -u +%F)" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "Already built today ($built)"; fi
+          if [ "$built" = "$(date -u +%F)" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "Market data already built today ($built)"; fi
       - uses: actions/setup-python@v5
-        if: steps.guard.outputs.skip != 'true'
         with:
           python-version: "3.12"
       - name: Install
-        if: steps.guard.outputs.skip != 'true'
         run: pip install --quiet yfinance pandas lxml requests
       - name: Build market data
         if: steps.guard.outputs.skip != 'true'
         continue-on-error: true
+        env:
+          BANXICO_TOKEN: ${{ secrets.BANXICO_TOKEN }}
         run: python scripts/build_markets.py
       - name: Build heatmap data
-        if: steps.guard.outputs.skip != 'true'
         continue-on-error: true
-        run: python scripts/build_heatmap.py
+        run: |
+          if [ "${{ steps.guard.outputs.skip }}" = "true" ]; then python scripts/build_heatmap.py --if-stale
+          else python scripts/build_heatmap.py; fi
       - name: Commit
-        if: steps.guard.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
