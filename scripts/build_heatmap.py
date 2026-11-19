@@ -7,6 +7,9 @@ Indices: S&P 500, IBEX 35, FTSE 100, S&P/BMV IPC.
 - Prices: Yahoo Finance daily closes via yfinance.
 - Size: market cap = shares outstanding (cached, refreshed weekly) x last close.
 Output: data/latest.json and data/<asOf>.json.
+Each map is dated to its index's own last complete session; members whose latest bar is missing in the batch
+download are re-fetched one by one. With --if-stale it only rebuilds when today's latest.json is stale
+(a map older than its index, >10% of weight unpriced, or an index missing).
 """
 import datetime as dt
 import json
@@ -137,15 +140,15 @@ MEX_STATIC = [
 INDICES = [
     dict(id="SPX", name="S&P 500", url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
          tick=["symbol", "ticker"], ncol=["security", "company"], scol=["gics sector", "sector"],
-         lo=490, hi=510, conv=yf_spx),
+         lo=490, hi=510, conv=yf_spx, isym="^GSPC"),
     dict(id="IBEX", name="IBEX 35", url="https://en.wikipedia.org/wiki/IBEX_35",
          tick=["ticker", "symbol"], ncol=["company", "name"], scol=["sector", "industry"],
-         lo=33, hi=37, conv=yf_ibex, smap=smap_ibex),
+         lo=33, hi=37, conv=yf_ibex, smap=smap_ibex, isym="^IBEX"),
     dict(id="UKX", name="FTSE 100", url="https://en.wikipedia.org/wiki/FTSE_100_Index",
          tick=["ticker", "epic", "symbol"], ncol=["company", "name"],
          scol=["ftse industry classification benchmark sector", "icb sector", "sector", "industry"],
-         lo=98, hi=102, conv=yf_ukx, smap=smap_ukx),
-    dict(id="MEXBOL", name="S&P/BMV IPC", static=MEX_STATIC, conv=yf_mex),
+         lo=98, hi=102, conv=yf_ukx, smap=smap_ukx, isym="^FTSE"),
+    dict(id="MEXBOL", name="S&P/BMV IPC", static=MEX_STATIC, conv=yf_mex, isym="^MXX"),
 ]
 
 
@@ -281,6 +284,64 @@ def closes_for(symbols):
     return c
 
 
+def naive_daily(s):
+    """Daily close series with a tz-naive date index (Ticker.history returns exchange-local timestamps)."""
+    idx = pd.to_datetime(s.index)
+    if getattr(idx, "tz", None) is not None:
+        idx = idx.tz_localize(None)
+    s = s.copy()
+    s.index = idx.normalize()
+    return s[~s.index.duplicated(keep="last")]
+
+
+def last_session(sym, ix_id, closes=None):
+    """Date of the index's own last complete session (the anchor for the map), or None."""
+    try:
+        if closes is not None and sym in closes.columns:
+            s = closes[sym].dropna()
+        else:
+            s = yf.Ticker(sym).history(period="1mo", interval="1d", auto_adjust=False)["Close"].dropna()
+        s = complete_sessions(naive_daily(s), ix_id)
+        return s.index[-1].date().isoformat() if len(s) else None
+    except Exception as e:
+        log("index anchor", sym, repr(e)[:120])
+        return None
+
+
+def refetch_stale(members, closes, ix_id, target, tries=2):
+    """yf.download in batch sometimes returns NaN for the latest bar of some tickers (seen 19 Nov 2026 for
+    11 of 35 IBEX names and most of the FTSE at 04:09 UTC). Re-download those tickers one by one."""
+    def last_date(sym):
+        if sym not in closes.columns:
+            return None
+        s = complete_sessions(closes[sym].dropna(), ix_id)
+        return s.index[-1].date().isoformat() if len(s) else None
+    stale = [m["y"] for m in members if (last_date(m["y"]) or "") < target]
+    for attempt in range(tries):
+        if not stale:
+            break
+        log(ix_id, "refetching", len(stale), "stale tickers, attempt", attempt + 1)
+        still = []
+        for sym in stale:
+            try:
+                h = yf.Ticker(sym).history(period="1mo", interval="1d", auto_adjust=False)["Close"].dropna()
+                h = naive_daily(h)
+                if len(h):
+                    closes = closes.reindex(closes.index.union(h.index))
+                    closes[sym] = h.reindex(closes.index)
+            except Exception as e:
+                log("refetch", sym, repr(e)[:120])
+            if (last_date(sym) or "") < target:
+                still.append(sym)
+            time.sleep(0.3)
+        stale = still
+        if stale:
+            time.sleep(20)
+    if stale:
+        log(ix_id, "still stale after refetch:", ", ".join(stale))
+    return closes
+
+
 # Exchange time zone and local close (plus a 20 min buffer) per heatmap index: today's bar is used only
 # after the session has closed, so a run during trading hours shows the last complete session.
 SESSION = {"SPX": ("America/New_York", 16, 20), "IBEX": ("Europe/Madrid", 17, 55),
@@ -297,7 +358,7 @@ def complete_sessions(s, ix_id, now=None):
     return s[keep]
 
 
-def compute(ix, members, closes):
+def compute(ix, members, closes, anchor=None):
     rows, last_dates = [], []
     for m in members:
         s = closes[m["y"]].dropna() if m["y"] in closes.columns else pd.Series(dtype=float)
@@ -312,6 +373,10 @@ def compute(ix, members, closes):
     if not last_dates:
         return None
     as_of = Counter(last_dates).most_common(1)[0][0]
+    # The index's own last session wins over the most common member date: otherwise a feed that misses the
+    # latest bar for most members silently shows the previous session (19 Nov 2026: IBEX and FTSE showed 17 Nov).
+    if anchor and anchor > as_of:
+        as_of = anchor
     items, caps = [], []
     for m, last_d, close, prev in rows:
         cap = m["sh"] * close if (m.get("sh") and close) else None
@@ -343,17 +408,55 @@ def compute(ix, members, closes):
             rec["f"] = i["f"]
         out_items.append(rec)
     out_items.sort(key=lambda r: -(r["w"] or 0))
+    unpriced_w = sum(r["w"] for r in out_items if r["d1"] is None and r["w"] is not None)
     return {
-        "id": ix["id"], "name": ix["name"], "asOf": as_of, "n": len(out_items),
+        "id": ix["id"], "name": ix["name"], "asOf": as_of, "idxAsOf": anchor, "n": len(out_items),
         "priced": sum(1 for r in out_items if r["d1"] is not None),
+        "unpricedW": round(unpriced_w, 2),
         "sized": sum(1 for r in out_items if r["w"] is not None),
         "wd1": round(wd / wsum, 2) if wsum else None,
         "sectors": sectors, "items": out_items,
     }
 
 
+MARKETS_NAMES = {"SPX": "S&P 500", "IBEX": "IBEX 35", "UKX": "FTSE 100", "MEXBOL": "S&P/BMV IPC"}
+
+
+def stale_reasons(today):
+    """Why data/latest.json needs a rebuild (empty list = it is fresh). Used by --if-stale on retry slots."""
+    try:
+        heat = json.load(open(os.path.join(DATA, "latest.json")))
+    except Exception as e:
+        return [f"latest.json unreadable: {e!r}"]
+    if heat.get("generatedAt", "")[:10] != today.isoformat():
+        return [f"latest.json built {heat.get('generatedAt')}, not today"]
+    try:
+        mk = {r["n"]: r.get("d") for r in json.load(open(os.path.join(DATA, "markets.json"))).get("indices", [])}
+    except Exception:
+        mk = {}
+    out = []
+    for b in heat.get("indices", []):
+        want = max(filter(None, [b.get("idxAsOf"), mk.get(MARKETS_NAMES.get(b["id"], ""))]), default=None)
+        if want and b.get("asOf", "") < want:
+            out.append(f"{b['id']} map {b.get('asOf')} vs index {want}")
+        unpriced = b.get("unpricedW")
+        if unpriced is None:  # file from the old script: estimate from items
+            unpriced = sum((i.get("w") or 0) for i in b.get("items", []) if i.get("d1") is None)
+        if unpriced > 10:
+            out.append(f"{b['id']} {round(unpriced, 1)}% of weight unpriced")
+    have = {b["id"] for b in heat.get("indices", [])}
+    out += [f"{ix['id']} missing" for ix in INDICES if ix["id"] not in have]
+    return out
+
+
 def main():
     today = dt.datetime.now(dt.timezone.utc).date()
+    if "--if-stale" in sys.argv:
+        why = stale_reasons(today)
+        if not why:
+            log("latest.json is fresh; nothing to rebuild")
+            return
+        log("rebuilding:", "; ".join(why))
     os.makedirs(DATA, exist_ok=True)
     result = {"v": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
               "source": "Prices: Yahoo Finance (yfinance). Constituents and sectors: Wikipedia. "
@@ -376,14 +479,20 @@ def main():
                         m["y"] = a
                         break
             refresh_shares(members, today)
-            block = compute(ix, members, closes)
+            anchor = last_session(ix["isym"], ix["id"]) if ix.get("isym") else None
+            if anchor:
+                closes = refetch_stale(members, closes, ix["id"], anchor)
+            block = compute(ix, members, closes, anchor)
             if not block:
                 result["errors"].append(ix["id"] + ": no prices")
                 continue
             block["members"] = msrc
             result["indices"].append(block)
             save_cache(ix, members)
-            log(ix["id"], "ok", block["asOf"], block["priced"], "/", block["n"], "wd1", block["wd1"])
+            log(ix["id"], "ok", block["asOf"], "(index", str(anchor) + ")", block["priced"], "/", block["n"],
+                "wd1", block["wd1"], "unpriced weight", block["unpricedW"])
+            if block["unpricedW"] > 10:
+                result["errors"].append(f"{ix['id']}: {block['unpricedW']}% of weight unpriced for {block['asOf']}")
         except Exception as e:
             log(ix["id"], "failed:", repr(e))
             result["errors"].append(ix["id"] + ": " + repr(e)[:200])
