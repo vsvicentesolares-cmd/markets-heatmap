@@ -13,6 +13,7 @@ import datetime as dt
 import io
 import json
 import os
+import re
 import sys
 import time
 
@@ -313,6 +314,49 @@ def ecb_block():
     return out
 
 
+# Euribor 12M daily fixing (EMMI, free with a one-day delay): euribor-rates.eu, with global-rates.com (same table)
+# as fallback; the previous full month's average comes from the ECB Data Portal (FM, monthly). Tested from Actions
+# on 23 Nov 2026: both pages list the last ~10 fixings as dd/mm/yyyy (mm-dd-yyyy on global-rates) and "3.372 %".
+EURIBOR_PAGES = [("euribor-rates.eu", "https://www.euribor-rates.eu/en/current-euribor-rates/4/euribor-rate-12-months/", "%d/%m/%Y"),
+                 ("global-rates.com", "https://www.global-rates.com/en/interest-rates/euribor/euribor-interest-12-months.aspx", "%m-%d-%Y")]
+ECB_EURIBOR12M = "M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA"
+
+
+def euribor_block():
+    pts, src, errs = None, None, []
+    today = dt.date.today().isoformat()
+    for name, url, fmt in EURIBOR_PAGES:
+        try:
+            r = get_retry(url, tries=2, timeout=45)
+            seen = {}
+            for d, v in re.findall(r"(\d{1,2}[/-]\d{1,2}[/-]\d{4})[^0-9]{1,200}?(-?\d\.\d{3})\s*%", r.text):
+                try:
+                    k = dt.datetime.strptime(d, fmt).date().isoformat()
+                except ValueError:
+                    continue
+                if k <= today:
+                    seen.setdefault(k, float(v))
+            if len(seen) >= 3:
+                pts, src = sorted(seen.items())[-15:], (name, url)
+                break
+            errs.append(f"{name}: only {len(seen)} fixings parsed")
+        except Exception as e:
+            errs.append(f"{name}: {repr(e)[:120]}")
+    if not pts:
+        raise RuntimeError("; ".join(errs))
+    d, v = pts[-1]
+    wk = next((p for p in reversed(pts) if p[0] <= (dt.date.fromisoformat(d) - dt.timedelta(days=7)).isoformat()), None)
+    out = {"d": d, "v": v, "prev": {"d": pts[-2][0], "v": pts[-2][1]},
+           "wk": {"d": wk[0], "v": wk[1]} if wk else None,
+           "pts": [{"d": a, "v": b} for a, b in pts], "src": src[0], "url": src[1], "notes": errs}
+    try:  # official monthly average for the note; optional
+        df = ecb_csv("FM", ECB_EURIBOR12M, {"lastNObservations": 2}).dropna(subset=["OBS_VALUE"]).sort_values("TIME_PERIOD")
+        out["mAvg"] = {"m": str(df["TIME_PERIOD"].iloc[-1])[:7], "v": round(float(df["OBS_VALUE"].iloc[-1]), 3)}
+    except Exception as e:
+        out["notes"].append(f"ECB monthly average: {repr(e)[:120]}")
+    return out
+
+
 # Banxico SIE: weekly Cetes primary auction yields (series IDs per the SIE catalogue; titles are logged so a
 # wrong ID shows up in the run). Needs a free SIE token in the BANXICO_TOKEN repository secret.
 SIE_CETES = [("28d", "SF43936"), ("91d", "SF43939"), ("182d", "SF43942"), ("1Y", "SF43945")]
@@ -391,7 +435,7 @@ def main():
               ("cmd", lambda: quote_block(CMD, {"Copper": 3})),
               ("ust", treasury),
               ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None)),
-              ("usCPI", cpi_block), ("usPCE", pce_block), ("ezECB", ecb_block),
+              ("usCPI", cpi_block), ("usPCE", pce_block), ("ezECB", ecb_block), ("esEuribor", euribor_block),
               ("mxCetes", lambda: sie_cetes_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None))]
     for key, fn in blocks:
         try:
