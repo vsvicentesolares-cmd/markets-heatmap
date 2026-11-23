@@ -195,6 +195,36 @@ def build_heat(ed, heat, date, mk=None):
     return doc, " | ".join(msgs) if msgs else "heat ok"
 
 
+def apply_es_euribor(ed, mk, log):
+    """Spain box: the Euribor 12M row from the daily feed (EMMI fixing, one-day delay, plus the ECB monthly average)."""
+    f = mk.get("esEuribor")
+    es = next((c for c in ed.get("macro", []) if c.get("c") == "ES"), None)
+    if not es:
+        return
+    row = next((r for r in es.get("rows", []) if r.get("k", "").startswith("Euribor 12M")), None)
+    if not f or not row:
+        log.append("ES EURIBOR 12M FEED MISSING (check the GitHub run): update the Euribor 12M row by hand" if not f
+                   else "ES box has no 'Euribor 12M' row: feed not applied")
+        return
+    old = (row.get("v"), row.get("p"))
+    row["v"], row["p"] = f"{f['v']:.3f}%", f"fix {short(f['d'])}"
+    bits = []
+    if f.get("mAvg"):
+        bits.append(f"{MON[int(f['mAvg']['m'][5:7]) - 1]} avg {f['mAvg']['v']:.3f}%")
+    ref = f.get("wk") or f.get("prev")
+    if ref:
+        bits.append(f"{(f['v'] - ref['v']) * 100:+.1f}bp vs {short(ref['d'])}")
+    row["note"] = "; ".join(bits) if bits else row.get("note", "")
+    src = es.setdefault("src", [])
+    item = {"n": f"{f['src']}: 12M Euribor daily fixings (EMMI)", "u": f["url"]}
+    i = next((j for j, x in enumerate(src) if "euribor" in (x.get("n", "") + x.get("u", "")).lower()), None)
+    if i is None:
+        src.append(item)
+    else:
+        src[i] = item
+    log.append(f"ES EURIBOR 12M SET FROM FEED: {old[0]} [{old[1]}] -> {row['v']} [{row['p']}] ({row['note']}); leave this row out of the patch")
+
+
 def prep(a):
     prev = load(a.prev)
     ed = copy.deepcopy(prev)
@@ -223,6 +253,7 @@ def prep(a):
     if mk:
         apply_us_infl(ed, mk, log)
         apply_ez(ed, mk, log)
+        apply_es_euribor(ed, mk, log)
     D = D or Dc
     before = len(ed.get("calendar", []))
     ed["calendar"] = sorted([c for c in ed.get("calendar", []) if c.get("d", "") >= a.date], key=lambda c: c["d"])
