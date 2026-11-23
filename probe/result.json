@@ -1,0 +1,191 @@
+{
+ "at": "2026-11-23T08:38:29.841714",
+ "euribor_rates_eu": {
+  "status": 200,
+  "len": 35124,
+  "ctype": "text/html; charset=utf-8",
+  "pairs": [
+   [
+    "20/11/2026",
+    "3.372"
+   ],
+   [
+    "19/11/2026",
+    "3.343"
+   ],
+   [
+    "18/11/2026",
+    "3.351"
+   ],
+   [
+    "17/11/2026",
+    "3.361"
+   ],
+   [
+    "16/11/2026",
+    "3.350"
+   ],
+   [
+    "13/11/2026",
+    "3.328"
+   ],
+   [
+    "12/11/2026",
+    "3.293"
+   ],
+   [
+    "11/11/2026",
+    "3.222"
+   ],
+   [
+    "10/11/2026",
+    "3.217"
+   ],
+   [
+    "09/11/2026",
+    "3.204"
+   ],
+   [
+    "02/11/2026",
+    "3.304"
+   ],
+   [
+    "01/10/2026",
+    "3.303"
+   ]
+  ],
+  "head": "<!doctype html> <html lang=\"en\" data-js-chunk=\"EuriborPage\" class=\"fontawesome-i2svg-active\"> <head itemscope itemtype=\"http://schema.org/WebSite\"> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\"> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/assets/images/favicon/fa",
+  "snip": [
+   "ype=\"image/png\" sizes=\"16x16\" href=\"/assets/images/favicon/favicon-16x16.png\"> <link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/assets/images/favicon/favicon-32x32.png\"> <link rel=\"icon\" type=\"image/png\" sizes=\"48x48\" href=\"/assets/images/favicon/favicon-48x48.png\"> <title>12 months Euribor rate</title> <meta name=\"description\" content=\"12 months Euribor rate - tables and charts which show the current rates and historical rates\"> <link rel=\"canonical\" href=\"https://www.euribor-rates.eu/en/current-euribor-rates/4/euribor-rate-12-months/\"> <meta name=\"robots\" ",
+   "-16x16.png\"> <link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/assets/images/favicon/favicon-32x32.png\"> <link rel=\"icon\" type=\"image/png\" sizes=\"48x48\" href=\"/assets/images/favicon/favicon-48x48.png\"> <title>12 months Euribor rate</title> <meta name=\"description\" content=\"12 months Euribor rate - tables and charts which show the current rates and historical rates\"> <link rel=\"canonical\" href=\"https://www.euribor-rates.eu/en/current-euribor-rates/4/euribor-rate-12-months/\"> <meta name=\"robots\" content=\"index,follow\"> <meta property=\"og:title\" content=\"12"
+  ]
+ },
+ "euribor_rates_eu_es": {
+  "status": 404,
+  "len": 358,
+  "ctype": "text/html; charset=utf-8",
+  "pairs": [],
+  "head": "<html><body><h1>Page not found</h1><h3>No umbraco document matches the url '/es/tipos-euribor-actuales/4/euribor-valor-12-meses/'.</h3><p>This page can be replaced with a custom 404. Check the documentation for \"custom 404\".</p><p style=\"border-top: 1px solid #ccc; padding-top: 10px\"><small>This page is intentionally left ugly ;-)</small></p></body></html>",
+  "snip": []
+ },
+ "emmi_history": {
+  "status": 200,
+  "len": 43692,
+  "ctype": "text/html; charset=utf-8",
+  "pairs": [],
+  "head": " <!DOCTYPE html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> <link rel=\"preload\" href=\"/EMMI/fonts/bootstrap-fonts/bootstrap-icons.woff2\" as=\"font\" type=\"font/woff2\" crossorigin=\"anonymous\"> <link rel=\"preload\" href=\"/EMMI/fonts/ESKlarheitKurrent/ESKlarheitKurrent-BoldItalic.woff2\" as=\"font\" type=\"font/w",
+  "snip": []
+ },
+ "global_rates": {
+  "status": 200,
+  "len": 58087,
+  "ctype": "text/html; charset=utf-8",
+  "pairs": [
+   [
+    "11-20-2026",
+    "3.372"
+   ],
+   [
+    "11-19-2026",
+    "3.343"
+   ],
+   [
+    "11-18-2026",
+    "3.351"
+   ],
+   [
+    "11-17-2026",
+    "3.361"
+   ],
+   [
+    "11-16-2026",
+    "3.350"
+   ],
+   [
+    "11-13-2026",
+    "3.328"
+   ],
+   [
+    "11-12-2026",
+    "3.293"
+   ],
+   [
+    "11-11-2026",
+    "3.222"
+   ],
+   [
+    "11-10-2026",
+    "3.217"
+   ],
+   [
+    "11-09-2026",
+    "3.204"
+   ],
+   [
+    "11-02-2026",
+    "3.304"
+   ],
+   [
+    "10-01-2026",
+    "3.303"
+   ]
+  ],
+  "head": " <!doctype html> <html lang=\"en\"> <head itemscope itemtype=\"http://schema.org/WebSite\"> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\"> <link rel=\"shortcut icon\" href=\"/favicon.ico\"> <link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/images/favicon/favicon-16x16.png\"> <link rel=\"icon\" type=\"image/png\" sizes=\"32x3",
+  "snip": [
+   "\"icon\" type=\"image/png\" sizes=\"48x48\" href=\"/images/favicon/favicon-48x48.png\"> <title>12-month Euribor interest rate | global-rates.com</title> <meta name=\"description\" content=\"12-month Euribor rate | Overview of the current and historical Euribor interest rates with a maturity of 12 months\"> <meta name=\"robots\" content=\"index,follow\"> <meta property=\"og:title\" content=\"12-month Euribor interest rate | global-rates.com\"> <meta property=\"og:site_name\" content=\"global-rates.com\"> <meta property=\"og:url\" content=\"https://www.global-rates.com/en/interest-r",
+   "rl\" content=\"https://www.global-rates.com/en/interest-rates/euribor/4/euribor-interest-12-months/\"> <meta property=\"og:type\" content=\"website\"> <meta property=\"og:description\" content=\"12-month Euribor rate | Overview of the current and historical Euribor interest rates with a maturity of 12 months\"> <meta property=\"og:locale\" content=\"en\" /> <link rel=\"canonical\" href=\"https://www.global-rates.com/en/interest-rates/euribor/4/euribor-interest-12-months/\"> <script defer src=\"/assets/js/runtime.js?5a4d9d9dd79e1815711b\"></script><script defer src=\"/assets/js/app."
+  ]
+ },
+ "ecb_daily": {
+  "status": 404,
+  "len": 472,
+  "ctype": "application/problem+json",
+  "pairs": [],
+  "head": "{\"detail\":\"No Series was returned for the query: <?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\" standalone=\\\"yes\\\"?><DataQuery dataflowId=\\\"FM\\\" detail=\\\"FULL\\\" type=\\\"SINGLE_QUERY\\\" lastNObservations=\\\"5\\\" includeHistory=\\\"false\\\"><SeriesKeys><SeriesKey>D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA</SeriesKey></SeriesKeys></DataQuery>\",\"instance\":\"/service/data/FM/D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA\",\"status\":404,\"title",
+  "snip": [
+   "{\"detail\":\"No Series was returned for the query: <?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\" standalone=\\\"yes\\\"?><DataQuery dataflowId=\\\"FM\\\" detail=\\\"FULL\\\" type=\\\"SINGLE_QUERY\\\" lastNObservations=\\\"5\\\" includeHistory=\\\"false\\\"><SeriesKeys><SeriesKey>D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA</SeriesKey></SeriesKeys></DataQuery>\",\"instance\":\"/service/data/FM/D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA\",\"status\":404,\"title\":\"Not Found\",\"type\":\"/service/data/FM/D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA\"}",
+   "\\\"1.0\\\" encoding=\\\"UTF-8\\\" standalone=\\\"yes\\\"?><DataQuery dataflowId=\\\"FM\\\" detail=\\\"FULL\\\" type=\\\"SINGLE_QUERY\\\" lastNObservations=\\\"5\\\" includeHistory=\\\"false\\\"><SeriesKeys><SeriesKey>D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA</SeriesKey></SeriesKeys></DataQuery>\",\"instance\":\"/service/data/FM/D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA\",\"status\":404,\"title\":\"Not Found\",\"type\":\"/service/data/FM/D.U2.EUR.RT.MM.EURIBOR1YD_.HSTA\"}"
+  ]
+ },
+ "ecb_monthly": {
+  "status": 200,
+  "len": 1551,
+  "ctype": "text/csv",
+  "pairs": [],
+  "head": "KEY,FREQ,REF_AREA,CURRENCY,PROVIDER_FM,INSTRUMENT_FM,PROVIDER_FM_ID,DATA_TYPE_FM,TIME_PERIOD,OBS_VALUE,OBS_STATUS,OBS_CONF,OBS_PRE_BREAK,OBS_COM,TIME_FORMAT,BREAKS,COLLECTION,COMPILING_ORG,DISS_ORG,DOM_SER_IDS,FM_CONTRACT_TIME,FM_COUPON_RATE,FM_IDENTIFIER,FM_LOT_SIZE,FM_MATURITY,FM_OUTS_AMOUNT,FM_PUT_CALL,FM_STRIKE_PRICE,PUBL_MU,PUBL_PUBLIC,UNIT_INDEX_BASE,COMPILATION,COVERAGE,DECIMALS,SOURCE_AGEN",
+  "snip": [
+   "LLECTION,COMPILING_ORG,DISS_ORG,DOM_SER_IDS,FM_CONTRACT_TIME,FM_COUPON_RATE,FM_IDENTIFIER,FM_LOT_SIZE,FM_MATURITY,FM_OUTS_AMOUNT,FM_PUT_CALL,FM_STRIKE_PRICE,PUBL_MU,PUBL_PUBLIC,UNIT_INDEX_BASE,COMPILATION,COVERAGE,DECIMALS,SOURCE_AGENCY,SOURCE_PUB,TITLE,TITLE_COMPL,UNIT,UNIT_MULT FM.M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA,M,U2,EUR,RT,MM,EURIBOR1YD_,HSTA,2026-08,2.9536667,A,F,,,P1M,,A,,,EURIBOR1YD=,,,,,,,,,,,,,,7,,,\"Euribor 1-year - Historical close, average of observations through period\",\"Euro area (changing composition) - Money Market - Euribor 1-year - Historical close, average of observations thr",
+   "DOM_SER_IDS,FM_CONTRACT_TIME,FM_COUPON_RATE,FM_IDENTIFIER,FM_LOT_SIZE,FM_MATURITY,FM_OUTS_AMOUNT,FM_PUT_CALL,FM_STRIKE_PRICE,PUBL_MU,PUBL_PUBLIC,UNIT_INDEX_BASE,COMPILATION,COVERAGE,DECIMALS,SOURCE_AGENCY,SOURCE_PUB,TITLE,TITLE_COMPL,UNIT,UNIT_MULT FM.M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA,M,U2,EUR,RT,MM,EURIBOR1YD_,HSTA,2026-08,2.9536667,A,F,,,P1M,,A,,,EURIBOR1YD=,,,,,,,,,,,,,,7,,,\"Euribor 1-year - Historical close, average of observations through period\",\"Euro area (changing composition) - Money Market - Euribor 1-year - Historical close, average of observations through period - Euro, provided by "
+  ]
+ },
+ "bde_ti_1_7": {
+  "status": 200,
+  "len": 1324467,
+  "ctype": "text/csv",
+  "pairs": [],
+  "head": "\"CÓDIGO DE LA SERIE\",D_DNBAA572,D_DNBAA172,D_DNBAS172,D_DNBAC172,D_DNBAD172,D_DNBAE172,D_DNBAF172,D_DNBAA304,D_DNBAD304,D_DNBAF304,D_DNBAA301,D_DNBAD301,D_DNBAF301,D_DNBAA317,D_DNBAD317,D_DNBAF317 \"NÚMERO SECUENCIAL\",5056707,579344,579345,579346,579347,579348,579349,63918,63967,64017,63915,63964,64014,63931,63980,64030 \"ALIAS DE LA SERIE\",\"TI_1_7.1\",\"TI_1_7.2\",\"TI_1_7.3\",\"TI_1_7.4\",\"TI_1_7.5\",\"TI_",
+  "snip": [
+   " UEM. Mercados monetarios. Depósitos. A 1 semana. Euríbor\",\"Tipos de interés. UEM. Mercado monetario. Euríbor. A 1 mes\",\"Tipos de interés. UEM. Mercado monetario. Euríbor. A 3 meses\",\"Tipos de interés. UEM. Mercado monetario. Euríbor. A 6 meses\",\"Tipos de interés. UEM. Mercado monetario. Euríbor. A 12 meses\",\"Tipos de interés. Reino Unido. Mercado monetario. 1 día\",\"Tipos de interés. Reino Unido. Mercado monetario. 3 Meses\",\"Tipos de interés. Reino Unido. Mercado monetario. 12 Meses\",\"Tipos de interés. EEUU. Mercado monetario. 1 día\",\"Tipos de interés. EEUU. Mercado monetario. 3 Meses\",\"Tipos ",
+   "es\",\"Tipos de interés. UEM. Mercado monetario. Euríbor. A 6 meses\",\"Tipos de interés. UEM. Mercado monetario. Euríbor. A 12 meses\",\"Tipos de interés. Reino Unido. Mercado monetario. 1 día\",\"Tipos de interés. Reino Unido. Mercado monetario. 3 Meses\",\"Tipos de interés. Reino Unido. Mercado monetario. 12 Meses\",\"Tipos de interés. EEUU. Mercado monetario. 1 día\",\"Tipos de interés. EEUU. Mercado monetario. 3 Meses\",\"Tipos de interés. EEUU. Mercado monetario. 12 Meses\",\"Tipos de interés. Japón. Mercado monetario. 1 día\",\"Tipos de interés. Japón. Mercado monetario. 3 Meses\",\"Tipos de interés. Japón. "
+  ]
+ },
+ "euribor_com_es": {
+  "status": 200,
+  "len": 84716,
+  "ctype": "text/html; charset=UTF-8",
+  "pairs": [],
+  "head": "<!DOCTYPE html> <html lang=\"es\" prefix=\"og: https://ogp.me/ns#\"> <head> <meta charset=\"UTF-8\"> <meta http-equiv='x-dns-prefetch-control' content='on'> <link rel='dns-prefetch' href='//fonts.googleapis.com' /> <link rel='dns-prefetch' href='//fonts.gstatic.com' /> <link rel='dns-prefetch' href='//s.gravatar.com' /> <link rel='dns-prefetch' href='//www.google-analytics.com' /> <meta name=\"viewpo",
+  "snip": []
+ },
+ "idealista": {
+  "status": 200,
+  "len": 54957,
+  "ctype": "text/html; charset=UTF-8",
+  "pairs": [],
+  "head": "<!DOCTYPE html><html lang=\"es\" dir=\"ltr\" class=\"project-idn_euribor idcms-web subdomain-www\" prefix=\"og: https://ogp.me/ns#\"><head><script defer src=\"https://st3.idealista.com/static/common/release/mavericks/legacy/js/didomi/didomi-consent-lang.js\"></script><script defer src=\"https://st3.idealista.com/static/common/release/mavericks/legacy/js/didomi/didomi-iab-integration.js\"></script><script defe",
+  "snip": [
+   "el-euribor-cierra-octubre-en-el-3-23-y-encarece-mas-las-hipotecas-variables\" title=\"El euríbor cierra octubre en el 3,23% y encarece más las hipotecas variables\"> El euríbor cierra octubre en el 3,23% y encarece más las hipotecas variables </a></h3><p class=\"component-article__summary\">El euríbor a 12 meses da otro disgusto a los hipotecados. El indicador de referencia para la mayoría de las hipotecas variables en España ha terminado octubre con una media del 3,239%, un punto por encima del nivel en el que se encontraba el año pasado por estas fechas (2,187%), por lo que las próximas revisione",
+   "ptiembre-y-acelera-la-subida-de-las-hipotecas-variables\" title=\"El euríbor escala al 3,2% en septiembre y acelera la subida de las hipotecas variables\"> El euríbor escala al 3,2% en septiembre y acelera la subida de las hipotecas variables </a></h3><p class=\"component-article__summary\">El euríbor a 12 meses asesta otro duro golpe a los hipotecados. El indicador de referencia para los préstamos variables en España ha cerrado septiembre con una media del 3,247%, su nivel más alto desde julio de 2024, y traerá consigo un sobrecoste para aquellos consumidores que revisen las condiciones de su hipo"
+  ]
+ }
+}
