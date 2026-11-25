@@ -8,7 +8,8 @@ Indices: S&P 500, IBEX 35, FTSE 100, S&P/BMV IPC.
 - Size: market cap = shares outstanding (cached, refreshed weekly) x last close.
 Output: data/latest.json and data/<asOf>.json.
 Each map is dated to its index's own last complete session; members whose latest bar is missing in the batch
-download are re-fetched one by one. With --if-stale it only rebuilds when today's latest.json is stale
+download are re-fetched one by one, and if Yahoo still has no daily bar for that session, the last hourly close
+of the session is used instead (marked "src": "1h" on the item, counted in the block's "hourly"). With --if-stale it only rebuilds when today's latest.json is stale
 (a map older than its index, >10% of weight unpriced, or an index missing).
 """
 import datetime as dt
@@ -281,6 +282,10 @@ def closes_for(symbols):
     c = df["Close"] if "Close" in df.columns.get_level_values(0) else df
     if isinstance(c, pd.Series):
         c = c.to_frame(symbols[0])
+    idx = pd.to_datetime(c.index)
+    if getattr(idx, "tz", None) is not None:  # keep exchange-local dates, as naive_daily does
+        c = c.copy()
+        c.index = idx.tz_localize(None).normalize()
     return c
 
 
@@ -308,9 +313,23 @@ def last_session(sym, ix_id, closes=None):
         return None
 
 
+def hourly_close(sym, target):
+    """Last hourly close of the session dated `target` (exchange-local date), or None.
+    Yahoo's daily bar for European members can be missing hours after the close while its intraday bars are
+    there (24 Nov 2026: every IBEX and FTSE member stopped at 20 Nov although both indices had 23 Nov)."""
+    h = yf.Ticker(sym).history(period="5d", interval="60m", auto_adjust=False)
+    if h is None or h.empty or "Close" not in h:
+        return None
+    s = h["Close"].dropna()
+    day = s[[pd.Timestamp(d).date().isoformat() == target for d in s.index]]
+    return float(day.iloc[-1]) if len(day) else None
+
+
 def refetch_stale(members, closes, ix_id, target, tries=2):
     """yf.download in batch sometimes returns NaN for the latest bar of some tickers (seen 19 Nov 2026 for
-    11 of 35 IBEX names and most of the FTSE at 04:09 UTC). Re-download those tickers one by one."""
+    11 of 35 IBEX names and most of the FTSE at 04:09 UTC). Re-download those tickers one by one; for any still
+    missing the `target` session, fall back to the last hourly close of that session.
+    Returns (closes, symbols priced from hourly bars)."""
     def last_date(sym):
         if sym not in closes.columns:
             return None
@@ -337,9 +356,28 @@ def refetch_stale(members, closes, ix_id, target, tries=2):
         stale = still
         if stale:
             time.sleep(20)
+    hourly = []
     if stale:
-        log(ix_id, "still stale after refetch:", ", ".join(stale))
-    return closes
+        log(ix_id, "still stale after daily refetch, trying hourly bars:", ", ".join(stale))
+        ts = pd.Timestamp(target)
+        if getattr(closes.index, "tz", None) is not None:
+            ts = ts.tz_localize(closes.index.tz)
+        for sym in stale:
+            try:
+                px = hourly_close(sym, target)
+                if px is not None:
+                    if ts not in closes.index:
+                        closes = closes.reindex(closes.index.union([ts]))
+                    if sym not in closes.columns:
+                        closes[sym] = float("nan")
+                    closes.loc[ts, sym] = px
+                    hourly.append(sym)
+            except Exception as e:
+                log("hourly", sym, repr(e)[:120])
+            time.sleep(0.3)
+        missing = [s for s in stale if s not in hourly]
+        log(ix_id, "priced from hourly bars:", len(hourly), "| still missing:", ", ".join(missing) or "none")
+    return closes, hourly
 
 
 # Exchange time zone and local close (plus a 20 min buffer) per heatmap index: today's bar is used only
@@ -358,7 +396,7 @@ def complete_sessions(s, ix_id, now=None):
     return s[keep]
 
 
-def compute(ix, members, closes, anchor=None):
+def compute(ix, members, closes, anchor=None, hourly=()):
     rows, last_dates = [], []
     for m in members:
         s = closes[m["y"]].dropna() if m["y"] in closes.columns else pd.Series(dtype=float)
@@ -391,7 +429,7 @@ def compute(ix, members, closes, anchor=None):
         sec = m.get("s") or m.get("ys") or "Other"
         if ix.get("smap"):
             sec = ix["smap"](sec)
-        items.append({"t": m["t"], "n": m.get("n") or m["t"], "s": sec,
+        items.append({"t": m["t"], "y": m["y"], "n": m.get("n") or m["t"], "s": sec,
                       "cap": cap, "d1": d1, "c": round(close, 2) if close else None, "f": flag})
         if cap:
             caps.append(cap)
@@ -406,6 +444,8 @@ def compute(ix, members, closes, anchor=None):
         rec = {"t": i["t"], "n": i["n"], "s": sectors.index(i["s"]), "w": w, "d1": i["d1"], "c": i["c"]}
         if i["f"]:
             rec["f"] = i["f"]
+        elif i["y"] in hourly and i["d1"] is not None:
+            rec["src"] = "1h"  # not "f": the page counts items with "f" as lacking a close
         out_items.append(rec)
     out_items.sort(key=lambda r: -(r["w"] or 0))
     unpriced_w = sum(r["w"] for r in out_items if r["d1"] is None and r["w"] is not None)
@@ -413,6 +453,7 @@ def compute(ix, members, closes, anchor=None):
         "id": ix["id"], "name": ix["name"], "asOf": as_of, "idxAsOf": anchor, "n": len(out_items),
         "priced": sum(1 for r in out_items if r["d1"] is not None),
         "unpricedW": round(unpriced_w, 2),
+        "hourly": sum(1 for r in out_items if r.get("src") == "1h"),
         "sized": sum(1 for r in out_items if r["w"] is not None),
         "wd1": round(wd / wsum, 2) if wsum else None,
         "sectors": sectors, "items": out_items,
@@ -480,9 +521,10 @@ def main():
                         break
             refresh_shares(members, today)
             anchor = last_session(ix["isym"], ix["id"]) if ix.get("isym") else None
+            hourly = []
             if anchor:
-                closes = refetch_stale(members, closes, ix["id"], anchor)
-            block = compute(ix, members, closes, anchor)
+                closes, hourly = refetch_stale(members, closes, ix["id"], anchor)
+            block = compute(ix, members, closes, anchor, set(hourly))
             if not block:
                 result["errors"].append(ix["id"] + ": no prices")
                 continue
@@ -490,7 +532,7 @@ def main():
             result["indices"].append(block)
             save_cache(ix, members)
             log(ix["id"], "ok", block["asOf"], "(index", str(anchor) + ")", block["priced"], "/", block["n"],
-                "wd1", block["wd1"], "unpriced weight", block["unpricedW"])
+                "wd1", block["wd1"], "unpriced weight", block["unpricedW"], "hourly", block["hourly"])
             if block["unpricedW"] > 10:
                 result["errors"].append(f"{ix['id']}: {block['unpricedW']}% of weight unpriced for {block['asOf']}")
         except Exception as e:
