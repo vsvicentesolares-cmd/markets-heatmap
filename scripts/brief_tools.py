@@ -225,6 +225,70 @@ def apply_es_euribor(ed, mk, log):
     log.append(f"ES EURIBOR 12M SET FROM FEED: {old[0]} [{old[1]}] -> {row['v']} [{row['p']}] ({row['note']}); leave this row out of the patch")
 
 
+def _set_src(box, name_key, item):
+    src = box.setdefault("src", [])
+    i = next((j for j, x in enumerate(src) if name_key in (x.get("n", "") + x.get("u", "")).lower()), None)
+    if i is None:
+        src.append(item)
+    else:
+        src[i] = item
+
+
+def _bp(a, b):
+    return f"{(a - b) * 100:+.0f}bp"
+
+
+def apply_us_sofr(ed, mk, log):
+    """US box: the SOFR row from the daily feed (NY Fed, previous business day)."""
+    f = mk.get("usSOFR")
+    us = next((c for c in ed.get("macro", []) if c.get("c") == "US"), None)
+    if not us:
+        return
+    row = next((r for r in us.get("rows", []) if r.get("k") == "SOFR"), None)
+    if not f:
+        log.append("US SOFR FEED MISSING (check the GitHub run): update the SOFR row by hand from the NY Fed")
+        return
+    if not row:
+        row = {"k": "SOFR"}
+        rows = us.setdefault("rows", [])
+        i = next((j for j, r in enumerate(rows) if r.get("k", "").startswith("1Y")), len(rows))
+        rows.insert(i, row)
+    old = (row.get("v"), row.get("p"))
+    row["v"], row["p"] = f"{f['v']:.2f}%", short(f["d"])
+    bits = [f"{_bp(f['v'], f[k]['v'])} vs {short(f[k]['d'])}" for k in ("wk", "m1") if f.get(k)]
+    if f.get("p1") is not None and f.get("p99") is not None:
+        bits.append(f"1st-99th pct {f['p1']:.2f}-{f['p99']:.2f}%")
+    row["note"] = "; ".join(bits)
+    _set_src(us, "sofr", {"n": f"{f['src']}: SOFR", "u": f["url"]})
+    log.append(f"US SOFR SET FROM FEED: {old[0]} [{old[1]}] -> {row['v']} [{row['p']}] ({row['note']}); leave this row out of the patch")
+
+
+def apply_mx_tiie(ed, mk, log):
+    """Mexico box: the TIIE 28d row from the daily feed (Banxico SIE), added after Cetes 28d if missing."""
+    f = mk.get("mxTIIE")
+    mx = next((c for c in ed.get("macro", []) if c.get("c") == "MX"), None)
+    if not mx:
+        return
+    rows = mx.setdefault("rows", [])
+    row = next((r for r in rows if r.get("k", "").startswith("TIIE 28")), None)
+    if not f:
+        log.append("MX TIIE 28D FEED MISSING (check the GitHub run): update the TIIE 28d row by hand (Banxico or DOF)")
+        return
+    if not row:
+        row = {"k": "TIIE 28d"}
+        i = next((j + 1 for j, r in enumerate(rows) if r.get("k", "").startswith("Cetes 28")), len(rows))
+        rows.insert(i, row)
+    old = (row.get("v"), row.get("p"))
+    row["v"], row["p"] = f"{f['v']:.4f}%", f"fix {short(f['d'])}"
+    bits = []
+    if f.get("fondeo"):
+        bits.append(f"TIIE de Fondeo {f['fondeo']['v']:.2f}% ({short(f['fondeo']['d'])})")
+    bits += [f"{_bp(f['v'], f[k]['v'])} vs {short(f[k]['d'])}" for k in ("wk", "m1") if f.get(k)]
+    row["note"] = "; ".join(bits)
+    _set_src(mx, "tiie", {"n": "Banxico SIE: TIIE 28 days and TIIE de Fondeo", "u": f["url"]})
+    log.append(f"MX TIIE 28D SET FROM FEED ({f.get('id')}): {old[0]} [{old[1]}] -> {row['v']} [{row['p']}] ({row['note']}); leave this row out of the patch")
+
+
 def prep(a):
     prev = load(a.prev)
     ed = copy.deepcopy(prev)
@@ -254,6 +318,12 @@ def prep(a):
         apply_us_infl(ed, mk, log)
         apply_ez(ed, mk, log)
         apply_es_euribor(ed, mk, log)
+        apply_us_sofr(ed, mk, log)
+        apply_mx_tiie(ed, mk, log)
+        for key, name in (("usSOFR", "SOFR"), ("esEuribor", "Euribor 12M"), ("mxTIIE", "TIIE 28d")):
+            f = mk.get(key)
+            if f and (dt.date.fromisoformat(a.date) - dt.date.fromisoformat(f["d"])).days > 5:
+                log.append(f"{name} FEED STALE: latest {f['d']}; check the source and the GitHub run")
     D = D or Dc
     before = len(ed.get("calendar", []))
     ed["calendar"] = sorted([c for c in ed.get("calendar", []) if c.get("d", "") >= a.date], key=lambda c: c["d"])
