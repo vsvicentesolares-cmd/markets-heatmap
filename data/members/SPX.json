@@ -156,16 +156,16 @@
 "y": "GOOGL",
 "n": "Alphabet Inc. (Class A)",
 "s": "Communication Services",
-"sh": 12294000000.0,
-"shAt": "2026-11-22"
+"sh": 5888000000.0,
+"shAt": "2026-11-26"
 },
 {
 "t": "GOOG",
 "y": "GOOG",
 "n": "Alphabet Inc. (Class C)",
 "s": "Communication Services",
-"sh": 12294000000.0,
-"shAt": "2026-11-22"
+"sh": 5579000000.0,
+"shAt": "2026-11-26"
 },
 {
 "t": "MO",
@@ -1628,16 +1628,16 @@
 "y": "FOXA",
 "n": "Fox Corporation (Class A)",
 "s": "Communication Services",
-"sh": 567905799.0,
-"shAt": "2026-11-22"
+"sh": 201552650.0,
+"shAt": "2026-11-26"
 },
 {
 "t": "FOX",
 "y": "FOX",
 "n": "Fox Corporation (Class B)",
 "s": "Communication Services",
-"sh": 421801414.0,
-"shAt": "2026-11-22"
+"sh": 220248764.0,
+"shAt": "2026-11-26"
 },
 {
 "t": "BEN",
@@ -2636,16 +2636,16 @@
 "y": "NWSA",
 "n": "News Corp (Class A)",
 "s": "Communication Services",
-"sh": 536459707.0,
-"shAt": "2026-11-22"
+"sh": 358254762.0,
+"shAt": "2026-11-26"
 },
 {
 "t": "NWS",
 "y": "NWS",
 "n": "News Corp (Class B)",
 "s": "Communication Services",
-"sh": 536459707.0,
-"shAt": "2026-11-22"
+"sh": 178920372.0,
+"shAt": "2026-11-26"
 },
 {
 "t": "NEE",
