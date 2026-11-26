@@ -5,7 +5,8 @@ Indices: S&P 500, IBEX 35, FTSE 100, S&P/BMV IPC.
 - Constituents and sectors: Wikipedia tables, cached in data/members/<ID>.json
   (the cache is used when a Wikipedia table cannot be parsed).
 - Prices: Yahoo Finance daily closes via yfinance.
-- Size: market cap = shares outstanding (cached, refreshed weekly) x last close.
+- Size: market cap = shares outstanding (cached, refreshed weekly) x last close; dual-class lines use
+  per-class counts from CLASS_SHARES (10-Q cover pages) so a company is not counted twice.
 Output: data/latest.json and data/<asOf>.json.
 Each map is dated to its index's own last complete session; members whose latest bar is missing in the batch
 download are re-fetched one by one, and if Yahoo still has no daily bar for that session, the last hourly close
@@ -31,6 +32,38 @@ DATA = os.path.join(ROOT, "data")
 MEM = os.path.join(DATA, "members")
 UA = {"User-Agent": "Mozilla/5.0 (compatible; markets-heatmap/1.0; personal dashboard)"}
 SHARES_MAX_AGE_DAYS = 7
+
+# Dual-class listings: Yahoo returns the company-wide share count for each line (GOOGL and GOOG both 12,294m,
+# NWSA and NWS both 536m, FOXA 568m), so sizing each line by it double counts the company. Use each class's own
+# count from the latest 10-Q cover page instead (refresh after each 10-Q; unlisted classes such as Alphabet's
+# Class B are left out, as in the S&P 500). Checked 26 Nov 2026.
+CLASS_SHARES = {
+    "GOOGL": (5_888_000_000, "2026-10-21", "Alphabet 10-Q Q3 2026, Class A"),
+    "GOOG": (5_579_000_000, "2026-10-21", "Alphabet 10-Q Q3 2026, Class C"),
+    "NWSA": (358_254_762, "2026-10-30", "News Corp 10-Q Q1 FY27, Class A"),
+    "NWS": (178_920_372, "2026-10-30", "News Corp 10-Q Q1 FY27, Class B"),
+    "FOXA": (201_552_650, "2026-10-28", "Fox Corp 10-Q Q1 FY27, Class A"),
+    "FOX": (220_248_764, "2026-10-28", "Fox Corp 10-Q Q1 FY27, Class B"),
+}
+CLASS_SHARES_MAX_AGE_DAYS = 120  # a 10-Q comes every quarter: warn if the table is older than that
+
+
+def apply_class_shares(ix_id, members, today, errors):
+    """Override dual-class share counts and flag any other pair of lines that share one count."""
+    for m in members:
+        o = CLASS_SHARES.get(m["t"])
+        if o:
+            m["sh"], m["shAt"] = float(o[0]), today.isoformat()
+            if (today - dt.date.fromisoformat(o[1])).days > CLASS_SHARES_MAX_AGE_DAYS:
+                errors.append(f"{ix_id}: CLASS_SHARES for {m['t']} is from {o[1]}; update it from the latest 10-Q")
+    seen = {}
+    for m in members:
+        if m.get("sh") and m["t"] not in CLASS_SHARES:
+            seen.setdefault(m["sh"], []).append(m["t"])
+    for sh, ts in seen.items():
+        if len(ts) > 1:
+            errors.append(f"{ix_id}: {', '.join(ts)} share one count ({sh:,.0f}); likely a company-wide figure "
+                          "for a dual-class listing, add them to CLASS_SHARES")
 
 
 def yf_spx(t):
@@ -520,6 +553,7 @@ def main():
                         m["y"] = a
                         break
             refresh_shares(members, today)
+            apply_class_shares(ix["id"], members, today, result["errors"])
             anchor = last_session(ix["isym"], ix["id"]) if ix.get("isym") else None
             hourly = []
             if anchor:
