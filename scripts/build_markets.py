@@ -7,6 +7,8 @@
 - US inflation: CPI and core CPI from the BLS public API (NSA for y/y, SA for m/m, as BLS reports them);
   PCE and core PCE from FRED (SA, BEA basis). 13 months of y/y plus latest m/m.
 - UK 5Y and 10Y par yields (Bank of England IADB): latest + 1M/3M/6M/1Y ago.
+- Money markets, daily: SOFR (New York Fed API, FRED fallback), 12M Euribor (EMMI fixings via
+  euribor-rates.eu), TIIE 28 days and TIIE de Fondeo (Banxico SIE).
 Each block is independent: a failure is recorded in "errors" and the rest still builds.
 """
 import datetime as dt
@@ -425,6 +427,85 @@ def sie_cetes_block(anchor=None):
             "note": "Weekly auctions (Tuesdays); 182d and 364d alternate weeks, so each tenor carries its own date"}
 
 
+# SOFR (New York Fed reference rate, published ~08:00 ET for the previous business day): NY Fed Markets API,
+# no key needed; FRED's SOFR series as fallback.
+NYFED_SOFR = "https://markets.newyorkfed.org/api/rates/secured/sofr/last/40.json"
+
+
+def rate_summary(pts, nd=2):
+    """pts: sorted [(iso date, value)] -> latest, previous, ~1 week and ~1 month earlier."""
+    d, v = pts[-1]
+    dd = dt.date.fromisoformat(d)
+
+    def back(days):
+        p = next((p for p in reversed(pts) if p[0] <= (dd - dt.timedelta(days=days)).isoformat()), None)
+        return {"d": p[0], "v": round(p[1], nd)} if p else None
+    return {"d": d, "v": round(v, nd), "prev": {"d": pts[-2][0], "v": round(pts[-2][1], nd)} if len(pts) > 1 else None,
+            "wk": back(7), "m1": back(28)}
+
+
+def sofr_block():
+    errs = []
+    try:
+        r = get_retry(NYFED_SOFR, tries=3, timeout=45)
+        rows = [x for x in r.json().get("refRates", []) if x.get("percentRate") is not None]
+        pts = sorted((x["effectiveDate"], float(x["percentRate"])) for x in rows)
+        if len(pts) >= 2:
+            out = rate_summary(pts)
+            last = max(rows, key=lambda x: x["effectiveDate"])
+            out.update({"p1": last.get("percentPercentile1"), "p99": last.get("percentPercentile99"),
+                        "vol": last.get("volumeInBillions"), "src": "New York Fed",
+                        "url": "https://www.newyorkfed.org/markets/reference-rates/sofr"})
+            return out
+        errs.append(f"NY Fed: {len(pts)} rows")
+    except Exception as e:
+        errs.append(f"NY Fed: {repr(e)[:120]}")
+    try:
+        s = fred_series("SOFR")
+        pts = [(i.date().isoformat(), float(v)) for i, v in s.dropna().iloc[-40:].items()]
+        out = rate_summary(pts)
+        out.update({"src": "FRED (NY Fed data)", "url": "https://fred.stlouisfed.org/series/SOFR", "notes": errs})
+        return out
+    except Exception as e:
+        errs.append(f"FRED: {repr(e)[:120]}")
+    raise RuntimeError("; ".join(errs))
+
+
+# TIIE 28 days (Banxico, determined daily on banking days and published in the DOF) plus the overnight TIIE de
+# Fondeo for context. Candidate SIE IDs are tried in order and the title must match, so a wrong or retired ID
+# shows up in the run instead of feeding the wrong rate.
+SIE_TIIE28 = ["SF43783", "SF60648"]
+SIE_FONDEO = ["SF331451"]
+
+
+def sie_tiie_block():
+    token = os.environ.get("BANXICO_TOKEN")
+    if not token:
+        raise RuntimeError("BANXICO_TOKEN secret not set")
+    end = dt.date.today()
+    data = sie_series(SIE_TIIE28 + SIE_FONDEO, end - dt.timedelta(days=60), end, token)
+    titles = {k: v.get("title") for k, v in data.items()}
+
+    def pick(ids, must):
+        for sid in ids:
+            x = data.get(sid)
+            if x and not x["s"].empty and must(str(x.get("title") or "").lower()):
+                return sid, [(i.date().isoformat(), float(v)) for i, v in x["s"].items()]
+        return None, None
+    sid, pts = pick(SIE_TIIE28, lambda t: "28" in t and "fondeo" not in t)
+    if not pts or len(pts) < 2:
+        raise RuntimeError(f"no TIIE 28 series matched; titles {titles}")
+    if (end - dt.date.fromisoformat(pts[-1][0])).days > 10:
+        raise RuntimeError(f"TIIE 28 {sid} latest {pts[-1][0]} looks stale; titles {titles}")
+    out = rate_summary(pts, nd=4)
+    out.update({"id": sid, "titles": titles, "src": "Banxico SIE",
+                "url": "https://www.banxico.org.mx/SieInternet/consultarDirectorioInternetAction.do?accion=consultarCuadroAnalitico&idCuadro=CA51&locale=es"})
+    fid, fpts = pick(SIE_FONDEO, lambda t: "fondeo" in t)
+    if fpts:
+        out["fondeo"] = {"d": fpts[-1][0], "v": round(fpts[-1][1], 2), "id": fid}
+    return out
+
+
 def main():
     os.makedirs(DATA, exist_ok=True)
     out = {"v": 1, "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "errors": [],
@@ -436,6 +517,7 @@ def main():
               ("ust", treasury),
               ("ukBoE", lambda: boe_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None)),
               ("usCPI", cpi_block), ("usPCE", pce_block), ("ezECB", ecb_block), ("esEuribor", euribor_block),
+              ("usSOFR", sofr_block), ("mxTIIE", sie_tiie_block),
               ("mxCetes", lambda: sie_cetes_block(dt.date.fromisoformat(out["ust"]["asOf"]) if "ust" in out else None))]
     for key, fn in blocks:
         try:
